@@ -1,11 +1,13 @@
+from execcelery.connection import project_name
 from json import loads
 
 
 class StartCelery:
-    def __init__(self, celery_app, model_queue):
+    def __init__(self, celery_app, model_queue, prefix=None):
         self.argv = ['worker', '--without-heartbeat', '--without-gossip']
         self.app = celery_app
         self.queues = model_queue
+        self.prefix = prefix or project_name()
 
     def run(self, queue_type, queue_list, queue_all, hostnum, celery_args, prefetch):
         self.app.conf.update(

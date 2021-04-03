@@ -1,5 +1,22 @@
 from celery import Celery
 from kombu import Queue, Exchange
+import os
+
+
+def project_name(path=os.getcwd(), dirs=(".git",), default=None):
+    """
+    get current project name.
+    :param path: scripts path
+    :param dirs: save rule e.g: catch git
+    :param default: if set default then save to the default absolute path
+    :return: project root directory name
+    """
+    prev, path = None, os.path.abspath(path)
+    while not default:
+        if any(os.path.isdir(os.path.join(path, d)) for d in dirs):
+            default = path.split('/')[-1]
+        prev, path = path, os.path.abspath(os.path.join(path, os.pardir))
+    return default
 
 
 class CeleryClient(Celery):
@@ -29,8 +46,8 @@ class CeleryClient(Celery):
 
 class ModelQueue:
 
-    def __init__(self, queue_prefix, model, num=True):
-        self.queue_prefix = queue_prefix
+    def __init__(self, model, num=True, queue_prefix=None):
+        self.queue_prefix = queue_prefix or project_name()
         self.model = model
         self.store = []
         self.num = num
