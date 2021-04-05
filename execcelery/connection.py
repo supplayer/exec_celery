@@ -94,7 +94,6 @@ class CeleryClient(Celery):
         self.model_queues.update(model_q.q_names)
 
     def __split_queue(self, q_type, q_list: str = None):
-
         return (self.__snum(q_type, q_list) if q_list.count(':') == 1 else
                 [self.model_queues.get(q_type)[int(index)] for index in loads(q_list)]
                 ) if (q_list and q_list != "[:]") else self.model_queues[q_type]
