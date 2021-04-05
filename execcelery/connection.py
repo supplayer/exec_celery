@@ -27,7 +27,7 @@ class ModelQueue:
         self.model = model
         self.store = []
         self.num = num
-        self.format = ['{0}_{1}_{2:0>2d}_{3}', '{0}_{1}_{2}']
+        self.format = ['{0}.{1}_{2:0>2d}_{3}', '{0}_{1}_{2}']
 
     def q(self, name, special=''):
         ns = name+','+special
@@ -83,7 +83,7 @@ class CeleryClient(Celery):
         self.conf.update(
             task_queues=self.choose_queues(queue_type, queue_list, queue_all), worker_prefetch_multiplier=prefetch)
         celery_args = list(celery_args)
-        self.argv.append(f'-n~{self.prefix}_{queue_type}_{"%02d" % hostnum}_{queue_list or "all"}@%d')
+        self.argv.append(f'-n~{self.prefix}.{queue_type}_{"%02d" % hostnum}_{queue_list or "all"}@%d')
         argv = self.argv + (celery_args[:-1] if ('pro' in celery_args or 'dev' in celery_args) else celery_args)
         self.worker_main(argv)
 
