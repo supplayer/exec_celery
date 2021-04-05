@@ -80,7 +80,6 @@ class CeleryClient(Celery):
 
     def run(self, queue_type, queue_list=None, queue_all=False, hostnum=1, celery_args='', prefetch=1):
         self.loader.import_default_modules()
-        print(self.model_queues)
         self.conf.update(
             task_queues=self.choose_queues(queue_type, queue_list, queue_all), worker_prefetch_multiplier=prefetch)
         celery_args = list(celery_args)
@@ -95,8 +94,10 @@ class CeleryClient(Celery):
         self.model_queues.update(model_q.q_names)
 
     def __split_queue(self, q_type, q_list: str = None):
+
         return (self.__snum(q_type, q_list) if q_list.count(':') == 1 else
-                [self.model_queues.get(q_type)[int(index)] for index in loads(q_list)])
+                [self.model_queues.get(q_type)[int(index)] for index in loads(q_list)]
+                ) if (q_list and q_list != "[:]") else self.model_queues[q_type]
 
     def __snum(self, q_type, q_list):
         min_num, max_num = q_list[1:-1].split(':')
