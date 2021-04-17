@@ -4,26 +4,31 @@ from json import loads
 import os
 
 
-def project_name(path=os.getcwd(), dirs=(".git",), default=None):
-    """
-    get current project name.
-    :param path: scripts path
-    :param dirs: save rule e.g: catch git
-    :param default: if set default then save to the default absolute path
-    :return: project root directory name
-    """
-    prev, path = None, os.path.abspath(path)
-    while not default:
-        if any(os.path.isdir(os.path.join(path, d)) for d in dirs):
-            default = path.split('/')[-1]
-        prev, path = path, os.path.abspath(os.path.join(path, os.pardir))
-    return default
+class ProjectName:
+    default = None
+
+    @classmethod
+    def project_name(cls, path=os.getcwd(), dirs=(".git",), default=None):
+        """
+        get current project name.
+        :param path: scripts path
+        :param dirs: save rule e.g: catch git
+        :param default: if set default then save to the default absolute path
+        :return: project root directory name
+        """
+        default = default or cls.default
+        prev, path = None, os.path.abspath(path)
+        while not default:
+            if any(os.path.isdir(os.path.join(path, d)) for d in dirs):
+                default = path.split('/')[-1]
+            prev, path = path, os.path.abspath(os.path.join(path, os.pardir))
+        return default
 
 
 class ModelQueue:
 
     def __init__(self, model, num=True, queue_prefix=None):
-        self.queue_prefix = queue_prefix or project_name()
+        self.queue_prefix = queue_prefix or ProjectName.project_name()
         self.model = model
         self.store = []
         self.num = num
@@ -76,12 +81,13 @@ class CeleryClient(Celery):
 
         self.argv = ['worker', '--without-heartbeat', '--without-gossip']
         self.model_queues = {}
-        self.prefix = prefix or project_name()
+        self.prefix = prefix or ProjectName.project_name()
 
-    def run(self, queue_type, queue_list=None, queue_all=False, hostnum=1, celery_args='', prefetch=1):
+    def run(self, queue_type, queue_list=None, queue_all=False, hostnum=1, celery_args='', prefetch=1, proj_name=None):
+        ProjectName.default = proj_name
         self.loader.import_default_modules()
-        self.conf.update(
-            task_queues=self.choose_queues(queue_type, queue_list, queue_all), worker_prefetch_multiplier=prefetch)
+        self.conf.update(task_queues=self.choose_queues(queue_type, queue_list, queue_all),
+                         worker_prefetch_multiplier=prefetch)
         celery_args = list(celery_args)
         self.argv.append(f'-n~{self.prefix}.{queue_type}_{"%02d" % hostnum}_{queue_list or "all"}@%d')
         argv = self.argv + (celery_args[:-1] if ('pro' in celery_args or 'dev' in celery_args) else celery_args)
