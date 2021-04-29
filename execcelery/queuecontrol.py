@@ -6,35 +6,36 @@ class QueueInfo:
         self.inspect = celery_app.control.inspect()
         self.channel = celery_app.connection().channel()
 
-    def queue_active_data(self):
+    def active_queues(self):
+        return self.inspect.active_queues()
+
+    def registered_queues(self):
+        return self.inspect.registered()
+
+    def active_queue_data(self):
         """
-        get all active queue with destination.
+        get all active queue data with destination.
+        :return {queue_name: destination}
         """
-        queues, q_data = self.inspect.active_queues(), {}
+        q_data = {}
         try:
-            [self.__q_data(q_data, q_key, q['name']) for q_key, q_info in queues.items() for q in q_info]
+            [self.__q_data(q_data, q_key, q['name']) for q_key, q_info in self.active_queues().items() for q in q_info]
         except AttributeError:
             print('No active queues, catching...')
         finally:
             return q_data
 
-    def queue_active_names(self):
+    def active_queue_names(self):
         """
         get all active queue name.
         """
-        queues = self.inspect.active_queues()
-        try:
-            return set([q['name'] for q_info in queues.values() for q in q_info])
-        except AttributeError:
-            print('No active queues, catching...')
-            return set()
+        return set(self.active_queue_data().keys())
 
-    def queue_registered_names(self):
+    def registered_queue_names(self):
         """
-        get all active queue name.
+        get all registered queue name.
         """
-        queues = self.inspect.registered()
-        return set([q.split('.', 1)[-1] for q_info in queues.values() for q in q_info])
+        return set([q.split('.', 1)[-1] for q_info in self.registered_queues().values() for q in q_info])
 
     @staticmethod
     def __q_data(q_data, q_destination, q_name):
@@ -57,17 +58,17 @@ class QueueControl(QueueInfo):
     def __init__(self, celery_app):
         super().__init__(celery_app)
         self.celery_app = celery_app
-        self.control_queues = self.queue_active_names()
-        self.control_queues_data = self.queue_active_data()
+        self.control_queues = self.active_queue_names
+        self.control_queues_data = self.active_queue_data()
         self.control = celery_app.control
 
     def catch_queues(self, q_rules: dict, exclude_q: list = None, include_q: list = None, catch_time: int = 60):
-        control_queues = set(include_q or self.queue_active_names()) - set(exclude_q or {})
+        control_queues = set(include_q or self.active_queue_names) - set(exclude_q or {})
         active_q, time_record = self.control_queues, time.time()
         print(f'Active queues: {active_q}')
         while True:
             if time.time() >= time_record:
-                active_q_data = self.queue_active_data()
+                active_q_data = self.active_queue_data()
                 self.control_queues_data = {**self.control_queues_data, **active_q_data}
                 for q_name in control_queues:
                     message_count = MsgDeclare(self.celery_app, q_name).tasks_count
