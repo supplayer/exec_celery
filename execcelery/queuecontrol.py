@@ -19,6 +19,18 @@ class QueueInfo:
     def active_queues(self):
         return self.inspect.active_queues()
 
+    def queue_reserved(self, destination, reserved=None):
+        reserved = reserved or self.inspect.reserved()
+        return reserved[destination]
+
+    def unavailable_consumer(self, q_name, active_queue_data=None, reserved=None):
+        active_queue_data = active_queue_data or self.active_queue_data()
+        reserved = reserved or self.inspect.reserved()
+        if q_name in active_queue_data:
+            return not all([self.queue_reserved(i, reserved) for i in active_queue_data[q_name]])
+        else:
+            return True
+
     def registered_queues(self):
         return self.inspect.registered()
 
@@ -63,18 +75,22 @@ class QueueControl(QueueInfo):
     def __init__(self, celery_app):
         super().__init__(celery_app)
 
-    def cancel_consumer(self, q_name, active_queue_data, reply=True, **kwargs):
+    def cancel_consumer(self, q_name, active_queue_data=None, reserved=None, reply=True, **kwargs):
         active_queue_data = active_queue_data or self.active_queue_data()
-        if q_name in active_queue_data:
-            return self.control.cancel_consumer(
+        reserved = reserved or self.inspect.reserved()
+        if q_name in active_queue_data and not self.unavailable_consumer(q_name, active_queue_data, reserved):
+            res = self.control.cancel_consumer(
                 q_name, destination=active_queue_data[q_name], reply=reply, **kwargs)
+            return f'Cancel consumer status: {res}'
         else:
-            return f'{q_name} not actived.'
+            return f'Cancel consumer status: {q_name} not actived.'
 
-    def add_consumer(self, q_name, active_queue_data=None, reply=True, **kwargs):
+    def add_consumer(self, q_name, active_queue_data=None, reserved=None, reply=True, **kwargs):
         active_queue_data = active_queue_data or self.active_queue_data()
-        if q_name in active_queue_data:
-            return self.control.add_consumer(
+        reserved = reserved or self.inspect.reserved()
+        if q_name in active_queue_data and self.unavailable_consumer(q_name, active_queue_data, reserved):
+            res = self.control.add_consumer(
                 q_name, destination=active_queue_data[q_name], reply=reply, **kwargs)
+            return f'Add consumer status: {res}'
         else:
-            return f'{q_name} not actived.'
+            return f'Add consumer status: {q_name} not actived.'
