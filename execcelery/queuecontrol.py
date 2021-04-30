@@ -1,40 +1,51 @@
-import time
-
-
 class QueueInfo:
     def __init__(self, celery_app):
-        self.inspect = celery_app.control.inspect()
+        self.control = celery_app.control
+        self.inspect = self.control.inspect()
         self.channel = celery_app.connection().channel()
 
-    def queue_active_data(self):
+    def active_queue_names(self):
         """
-        get all active queue with destination.
+        get all active queue name.
         """
-        queues, q_data = self.inspect.active_queues(), {}
+        return set(self.active_queue_data().keys())
+
+    def registered_queue_names(self):
+        """
+        get all registered queue name.
+        """
+        return set([q.split('.', 1)[-1] for q_info in self.registered_queues().values() for q in q_info])
+
+    def active_queues(self):
+        return self.inspect.active_queues()
+
+    def queue_reserved(self, destination, reserved=None):
+        reserved = reserved or self.inspect.reserved()
+        return reserved[destination]
+
+    def unavailable_consumer(self, q_name, active_queue_data=None, reserved=None):
+        active_queue_data = active_queue_data or self.active_queue_data()
+        reserved = reserved or self.inspect.reserved()
+        if q_name in active_queue_data:
+            return not all([self.queue_reserved(i, reserved) for i in active_queue_data[q_name]])
+        else:
+            return True
+
+    def registered_queues(self):
+        return self.inspect.registered()
+
+    def active_queue_data(self):
+        """
+        get all active queue data with destination.
+        :return {queue_name: destination}
+        """
+        q_data = {}
         try:
-            [self.__q_data(q_data, q_key, q['name']) for q_key, q_info in queues.items() for q in q_info]
+            [self.__q_data(q_data, q_key, q['name']) for q_key, q_info in self.active_queues().items() for q in q_info]
         except AttributeError:
             print('No active queues, catching...')
         finally:
             return q_data
-
-    def queue_active_names(self):
-        """
-        get all active queue name.
-        """
-        queues = self.inspect.active_queues()
-        try:
-            return set([q['name'] for q_info in queues.values() for q in q_info])
-        except AttributeError:
-            print('No active queues, catching...')
-            return set()
-
-    def queue_registered_names(self):
-        """
-        get all active queue name.
-        """
-        queues = self.inspect.registered()
-        return set([q.split('.', 1)[-1] for q_info in queues.values() for q in q_info])
 
     @staticmethod
     def __q_data(q_data, q_destination, q_name):
@@ -44,51 +55,42 @@ class QueueInfo:
 
 
 class MsgDeclare(QueueInfo):
-    def __init__(self, celery_app, q_name):
+    def __init__(self, celery_app):
         super().__init__(celery_app)
-        self.__q_declare = self.channel.queue_declare(q_name, passive=True)
-        self.queue_name = self.__q_declare.queue
-        self.message_count = self.__q_declare.message_count
-        self.consumer_count = self.__q_declare.consumer_count
-        self.tasks_count = self.message_count + self.consumer_count
+
+    def tasks_count(self, q_name):
+        return self.msg_count(q_name) + self.consumer_count(q_name)
+
+    def msg_count(self, q_name):
+        return self.__q_declare(q_name).message_count
+
+    def consumer_count(self, q_name):
+        return self.__q_declare(q_name).consumer_count
+
+    def __q_declare(self, q_name):
+        return self.channel.queue_declare(q_name, passive=True)
 
 
 class QueueControl(QueueInfo):
     def __init__(self, celery_app):
         super().__init__(celery_app)
-        self.celery_app = celery_app
-        self.control_queues = self.queue_active_names()
-        self.control_queues_data = self.queue_active_data()
-        self.control = celery_app.control
 
-    def catch_queues(self, q_rules: dict, exclude_q: list = None, include_q: list = None, catch_time: int = 60):
-        control_queues = set(include_q or self.queue_active_names()) - set(exclude_q or {})
-        active_q, time_record = self.control_queues, time.time()
-        print(f'Active queues: {active_q}')
-        while True:
-            if time.time() >= time_record:
-                active_q_data = self.queue_active_data()
-                self.control_queues_data = {**self.control_queues_data, **active_q_data}
-                for q_name in control_queues:
-                    message_count = MsgDeclare(self.celery_app, q_name).tasks_count
-                    if q_name not in active_q_data or message_count >= q_rules[q_name]['max']:
-                        [self.__cancel_consumer(q, active_q_data, q_name, message_count, q_rules)
-                         for q in q_rules[q_name]['up_task']]
+    def cancel_consumer(self, q_name, active_queue_data=None, reserved=None, reply=True, **kwargs):
+        active_queue_data = active_queue_data or self.active_queue_data()
+        reserved = reserved or self.inspect.reserved()
+        if q_name in active_queue_data and not self.unavailable_consumer(q_name, active_queue_data, reserved):
+            res = self.control.cancel_consumer(
+                q_name, destination=active_queue_data[q_name], reply=reply, **kwargs)
+            return f'Cancel consumer status: {res}'
+        else:
+            return f'Cancel consumer status: {q_name} not actived.'
 
-                    if q_name in active_q_data and message_count <= q_rules[q_name]['min']:
-                        [self.__add_consumer(q, active_q_data, q_name, message_count)
-                         for q in q_rules[q_name]['up_task']]
-
-                time_record = time.time() + catch_time
-
-    def __cancel_consumer(self, q, active_q_data, q_name, message_count, q_rules):
-        if q in active_q_data and q in self.control_queues_data:
-            res = self.control.cancel_consumer(q, destination=self.control_queues_data[q], reply=True)
-            print(f'{{q_name: {q_name}, q_count: {message_count}}}\n'
-                  f'<{q_name}> has reached {q_rules[q_name]["max"]}, stoping queue <{res}> ....')
-
-    def __add_consumer(self, q, active_q_data, q_name, message_count):
-        if q not in active_q_data and q in self.control_queues_data:
-            res = self.control.add_consumer(q, destination=self.control_queues_data[q], reply=True)
-            print(f'{{q_name: {q_name}, q_count: {message_count}}}\n'
-                  f'<{q_name}>\'s tasks has lowered preset value, will active queue <{res}> ....')
+    def add_consumer(self, q_name, active_queue_data=None, reserved=None, reply=True, **kwargs):
+        active_queue_data = active_queue_data or self.active_queue_data()
+        reserved = reserved or self.inspect.reserved()
+        if q_name in active_queue_data and self.unavailable_consumer(q_name, active_queue_data, reserved):
+            res = self.control.add_consumer(
+                q_name, destination=active_queue_data[q_name], reply=reply, **kwargs)
+            return f'Add consumer status: {res}'
+        else:
+            return f'Add consumer status: {q_name} not actived.'
