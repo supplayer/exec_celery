@@ -17,15 +17,16 @@ class CatchQueues(QueueControl, MsgDeclare):
 
     def start_catching(self, show_time=False):
         time_record = time.time()
-        self.logger(f'Active queues: {self.active_queue_names()}')
         while True:
             if time.time() >= time_record:
                 active_qs_data = self.active_queue_data()
-                swich_res = [self.swich_func[v](k, active_qs_data)
+                reserved = self.inspect.reserved()
+                self.logger(f'\n[{datetime.now() if show_time else ""}]\nActive queues: {set(active_qs_data.keys())}')
+                # print(self.swich_qs_status(active_qs_data))
+                swich_res = [self.swich_func[v](k, active_qs_data, reserved)
                              for k, v in self.swich_qs_status(active_qs_data).items() if v is not None]
-                self.logger(f'\n{datetime.now() if show_time else ""} Catching Report:\n' +
-                            '\n'.join(map(str, swich_res))+'\n')
-
+                self.logger(f'Catching Report:\n' +
+                            '\n'.join(map(str, swich_res))+'\n') if swich_res else None
                 time_record = time.time() + self.catch_time
 
     def control_queues(self):
