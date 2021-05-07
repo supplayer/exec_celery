@@ -74,23 +74,24 @@ class MsgDeclare(QueueInfo):
 class QueueControl(QueueInfo):
     def __init__(self, celery_app):
         super().__init__(celery_app)
+        self.cancel_record = {}
 
-    def cancel_consumer(self, q_name, active_queue_data=None, reserved=None, reply=True, **kwargs):
+    def cancel_consumer(self, q_name, active_queue_data=None, reply=True, **kwargs):
         active_queue_data = active_queue_data or self.active_queue_data()
-        reserved = reserved or self.inspect.reserved()
-        if q_name in active_queue_data and not self.unavailable_consumer(q_name, active_queue_data, reserved):
+        if q_name in active_queue_data:
             res = self.control.cancel_consumer(
                 q_name, destination=active_queue_data[q_name], reply=reply, **kwargs)
-            return f'Cancel consumer status: {res}'
+            self.cancel_record.update({q_name: active_queue_data[q_name]})
+            return [True, f'Cancel consumer status: {res}']
         else:
-            return f'Cancel consumer status: {q_name} not actived.'
+            return [False, f'Cancel consumer status: {q_name} not actived.']
 
-    def add_consumer(self, q_name, active_queue_data=None, reserved=None, reply=True, **kwargs):
+    def add_consumer(self, q_name, active_queue_data=None, reply=True, **kwargs):
         active_queue_data = active_queue_data or self.active_queue_data()
-        reserved = reserved or self.inspect.reserved()
-        if q_name in active_queue_data and self.unavailable_consumer(q_name, active_queue_data, reserved):
+        if q_name not in active_queue_data and q_name in self.cancel_record:
             res = self.control.add_consumer(
-                q_name, destination=active_queue_data[q_name], reply=reply, **kwargs)
-            return f'Add consumer status: {res}'
+                q_name, destination=self.cancel_record[q_name], reply=reply, **kwargs)
+            self.cancel_record.pop(q_name)
+            return [True, f'Add consumer status: {res}']
         else:
-            return f'Add consumer status: {q_name} not actived.'
+            return [False, f'Add consumer status: {q_name} add  unsuccess.']

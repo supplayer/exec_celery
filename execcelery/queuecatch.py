@@ -20,10 +20,9 @@ class CatchQueues(QueueControl, MsgDeclare):
         while True:
             if time.time() >= time_record:
                 active_qs_data = self.active_queue_data()
-                reserved = self.inspect.reserved()
                 self.logger(f'\n[{datetime.now() if show_time else ""}]\nActive queues: {set(active_qs_data.keys())}')
                 # print(self.swich_qs_status(active_qs_data))
-                swich_res = [self.swich_func[v](k, active_qs_data, reserved)
+                swich_res = [self.swich_func[v](k, active_qs_data)
                              for k, v in self.swich_qs_status(active_qs_data).items() if v is not None]
                 self.logger(f'Catching Report:\n' +
                             '\n'.join(map(str, swich_res))+'\n') if swich_res else None
