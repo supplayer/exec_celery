@@ -71,7 +71,6 @@ class CeleryClient(Celery):
             task_serializer='msgpack',
             task_compression='zstd',
             task_ignore_result=True,
-            task_acks_late=True,
             result_serializer='json',
             enable_utc=False,
             timezone='Asia/Singapore',
