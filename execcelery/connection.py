@@ -77,6 +77,9 @@ class CeleryClient(Celery):
             max_tasks_per_child=100,
             broker_heartbeat=0,
             broker_pool_limit=1000,
+            task_inherit_parent_priority=True,
+            task_default_priority=3,
+            task_queue_max_priority=10,
         )
 
         self.argv = ['worker', '--without-heartbeat', '--without-gossip']
