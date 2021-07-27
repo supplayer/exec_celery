@@ -11,7 +11,7 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/Supplayer/exec_celery.git",
-    packages=setuptools.find_packages(exclude=('tests', '.gitignore', 'requirements.txt')),
+    packages=setuptools.find_packages(include=('execcelery',)),
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
