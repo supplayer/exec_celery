@@ -80,6 +80,7 @@ class CeleryClient(Celery):
             task_inherit_parent_priority=True,
             task_default_priority=3,
             task_queue_max_priority=10,
+            worker_cancel_long_running_tasks_on_connection_loss=True,
         )
 
         self.argv = ['worker', '--without-heartbeat', '--without-gossip']
@@ -101,6 +102,11 @@ class CeleryClient(Celery):
 
     def model_q_update(self, model_q):
         self.model_queues.update(model_q.q_names)
+
+    @classmethod
+    def switch_task_meta(cls, q_name, task_name=None, serializer='json', task_prefix=None, model_q=None, **kwargs):
+        m_q = model_q or (lambda x: {'queue': x})
+        return {**m_q(q_name), **{"name": f'{task_prefix}.{task_name or q_name}', 'serializer': serializer}, **kwargs}
 
     def __split_queue(self, q_type, q_list: str = None):
         return (self.__snum(q_type, q_list) if q_list.count(':') == 1 else
