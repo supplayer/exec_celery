@@ -104,9 +104,21 @@ class CeleryClient(Celery):
         self.model_queues.update(model_q.q_names)
 
     @classmethod
-    def switch_task_meta(cls, q_name, task_name=None, serializer='json', task_prefix=None, model_q=None, **kwargs):
+    def switch_task_meta(cls, q_name, task_name=None, task_prefix='app.tasks', serializer='json',
+                         model_q=None, **kwargs):
         m_q = model_q or (lambda x: {'queue': x})
         return {**m_q(q_name), **{"name": f'{task_prefix}.{task_name or q_name}', 'serializer': serializer}, **kwargs}
+
+    def switch_proj(self, msg, warning_task=None, logger=None):
+        task_meta = self.current_worker_task.request.delivery_info
+        w_msg = f"Wrong tasks consumer --> streetflow_priority.streetsnap_filter: {msg}, details: {task_meta}"
+        if warning_task:
+            warning_task.delay(w_msg)
+        if logger:
+            logger.msg(w_msg)
+        else:
+            print(w_msg)
+        raise SystemError('Wrong tasks consumer.')
 
     def __split_queue(self, q_type, q_list: str = None):
         return (self.__snum(q_type, q_list) if q_list.count(':') == 1 else
