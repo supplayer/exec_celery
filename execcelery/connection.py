@@ -111,7 +111,7 @@ class CeleryClient(Celery):
 
     def switch_proj(self, msg, warning_task=None, logger=None):
         task_meta = self.current_worker_task.request.delivery_info
-        w_msg = f"Wrong tasks consumer --> streetflow_priority.streetsnap_filter: {msg}, details: {task_meta}"
+        w_msg = f"Wrong tasks consumer: {msg}, details: {task_meta}"
         if warning_task:
             warning_task.delay(w_msg)
         if logger:
