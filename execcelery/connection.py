@@ -34,8 +34,8 @@ class ModelQueue:
         self.num = num
         self.format = ['{0}.{1}_{2:0>2d}_{3}', '{0}_{1}_{2}']
 
-    def q(self, name, special=''):
-        ns = name+','+special
+    def q(self, name, special='', exchange='default', routing_key="", exchange_type='direct'):
+        ns = f"{name},{special},{exchange},{routing_key},{exchange_type}"
         if ns not in self.store:
             self.store.append(ns)
         args, num = ([special+self.queue_prefix, self.model, self.store.index(ns), name], 0
@@ -43,16 +43,25 @@ class ModelQueue:
         q_name = self.__q_format(num, *args)
         return {'queue': q_name, 'name': q_name}
 
+    def q_info(self, name, special='', exchange='default', routing_key="", exchange_type='direct'):
+        ns = f"{name},{special},{exchange},{routing_key},{exchange_type}"
+        args, num = ([special+self.queue_prefix, self.model, self.store.index(ns), name], 0
+                     ) if self.num else ([special + self.queue_prefix, self.model, name], 1)
+        q_name = self.__q_format(num, *args)
+        return {'queue': q_name, 'name': q_name, 'exchange': exchange, 'exchange_type': exchange_type,
+                'routing_key': routing_key or q_name}
+
     @property
     def q_names(self):
-        return {self.model: [self.__q_exchange(self.q(*i.split(','))['queue']) for i in self.store]}
+        return {self.model: [self.__q_info(**self.q_info(*i.split(','))) for i in self.store]}
 
     def __q_format(self, num, *args):
         return self.format[num].format(*args)
 
     @staticmethod
-    def __q_exchange(q_name):
-        return Queue(**{'name': q_name, 'exchange': Exchange(q_name), 'routing_key': q_name})
+    def __q_info(**kwargs):
+        return {'name': kwargs['queue'], 'exchange': kwargs['exchange'], 'exchange_type': kwargs['exchange_type'],
+                'routing_key': kwargs['routing_key']}
 
 
 class CeleryClient(Celery):
@@ -99,16 +108,20 @@ class CeleryClient(Celery):
         self.worker_main(argv)
 
     def choose_queues(self, q_type, q_list: str = None, q_all=False):
-        return [j for i in self.model_queues.values() for j in i] if q_all else self.__split_queue(q_type, q_list)
+        return [self.__init_q(j) for i in self.model_queues.values() for j in i
+                ] if q_all else self.__split_queue(q_type, q_list)
 
     def model_q_update(self, model_q):
+        print(model_q.q_names)
         self.model_queues.update(model_q.q_names)
+        print([self.__init_q(j) for i in self.model_queues.values() for j in i])
 
     @classmethod
-    def switch_task_meta(cls, q_name, task_name=None, task_prefix='app.tasks', serializer='json',
+    def switch_task_meta(cls, q_name, task_name=None, exchange=None, task_prefix='app.tasks', serializer='json',
                          model_q=None, **kwargs):
         m_q = model_q or (lambda x: {'queue': x})
-        return {**m_q(q_name), **{"name": f'{task_prefix}.{task_name or q_name}', 'serializer': serializer}, **kwargs}
+        return {**m_q(q_name), **{"name": f"{task_prefix}.{task_name or q_name}", "exchange": exchange or q_name,
+                                  "serializer": serializer}, **kwargs}
 
     def switch_proj(self, msg, warning_task=None, logger=None):
         task_meta = self.current_worker_task.request.delivery_info
@@ -126,6 +139,13 @@ class CeleryClient(Celery):
         self.conf.task_default_queue = f"{proj_name}.{q_name}"
         self.conf.task_default_exchange = f"{proj_name}.{exchange or q_name}"
         self.conf.task_default_routing_key = f"{proj_name}.{routing_key or q_name}"
+
+    def __init_q(self, item):
+        if item['exchange'][0] == 'default':
+            item["exchange"] = Exchange(self.conf.task_default_exchange, type=item.pop('exchange_type'))
+        else:
+            item["exchange"] = Exchange(item['exchange'], type=item.pop('exchange_type'))
+        return Queue(**item)
 
     def __split_queue(self, q_type, q_list: str = None):
         return (self.__snum(q_type, q_list) if q_list.count(':') == 1 else
