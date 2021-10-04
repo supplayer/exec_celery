@@ -86,6 +86,7 @@ class CeleryClient(Celery):
         self.argv = ['worker', '--without-heartbeat', '--without-gossip']
         self.model_queues = {}
         self.prefix = prefix or ProjectName.project_name()
+        self.rest_task_default()
 
     def run(self, queue_type, queue_list=None, queue_all=False, hostnum=1, celery_args='', prefetch=1, proj_name=None):
         ProjectName.default = proj_name
@@ -119,6 +120,12 @@ class CeleryClient(Celery):
         else:
             print(w_msg)
         raise SystemError('Wrong tasks consumer.')
+
+    def rest_task_default(self, q_name='default', exchange=None, routing_key=None, proj_name=None):
+        proj_name = f"!{proj_name or self.prefix}"
+        self.conf.task_default_queue = f"{proj_name}.{q_name}"
+        self.conf.task_default_exchange = f"{proj_name}.{exchange or q_name}"
+        self.conf.task_default_routing_key = f"{proj_name}.{routing_key or q_name}"
 
     def __split_queue(self, q_type, q_list: str = None):
         return (self.__snum(q_type, q_list) if q_list.count(':') == 1 else
