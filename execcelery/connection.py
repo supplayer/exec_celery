@@ -93,6 +93,7 @@ class CeleryClient(Celery):
         )
 
         self.argv = ['worker', '--without-heartbeat', '--without-gossip']
+        self.conf.task_queues = set()
         self.model_queues = {}
         self.prefix = prefix or ProjectName.project_name()
         self.rest_task_default()
@@ -100,28 +101,29 @@ class CeleryClient(Celery):
     def run(self, queue_type, queue_list=None, queue_all=False, hostnum=1, celery_args='', prefetch=1, proj_name=None):
         ProjectName.default = proj_name
         self.loader.import_default_modules()
-        self.conf.update(task_queues=self.choose_queues(queue_type, queue_list, queue_all),
-                         worker_prefetch_multiplier=prefetch)
+        self.conf.update(worker_prefetch_multiplier=prefetch)
         celery_args = list(celery_args)
         self.argv.append(f'-n~{self.prefix}.{queue_type}_{"%02d" % hostnum}_{queue_list or "all"}@%d')
+        if '-Q' not in celery_args:
+            self.argv.append('-Q'+','.join(self.choose_queues(queue_type, queue_list, queue_all)))
         argv = self.argv + (celery_args[:-1] if ('pro' in celery_args or 'dev' in celery_args) else celery_args)
         self.worker_main(argv)
 
     def choose_queues(self, q_type, q_list: str = None, q_all=False):
-        return [self.__init_q(j) for i in self.model_queues.values() for j in i
-                ] if q_all else self.__split_queue(q_type, q_list)
+        return [j for i in self.model_queues.values() for j in i] if q_all else self.__split_queue(q_type, q_list)
 
     def model_q_update(self, model_q):
-        print(model_q.q_names)
-        self.model_queues.update(model_q.q_names)
-        print([self.__init_q(j) for i in self.model_queues.values() for j in i])
+        self.model_queues.update({k: [i['name'] for i in v] for k, v in model_q.q_names.items()})
+        [self.conf.task_queues.add(self.__init_q(**j)) for i in model_q.q_names.values() for j in i]
 
-    @classmethod
-    def switch_task_meta(cls, q_name, task_name=None, exchange=None, task_prefix='app.tasks', serializer='json',
-                         model_q=None, **kwargs):
+    def switch_task_meta(self, q_name, task_name=None, exchange=None, task_prefix='app.tasks', serializer='json',
+                         model_q=None, exchange_type='direct', **kwargs):
         m_q = model_q or (lambda x: {'queue': x})
-        return {**m_q(q_name), **{"name": f"{task_prefix}.{task_name or q_name}", "exchange": exchange or q_name,
-                                  "serializer": serializer}, **kwargs}
+        q_data = {**m_q(q_name), **{"name": f"{task_prefix}.{task_name or q_name}", "exchange": exchange or q_name,
+                                    "serializer": serializer}, **kwargs}
+        self.conf.task_queues.add(self.__init_q(name=q_data['queue'], exchange=q_data['exchange'],
+                                                exchange_type=exchange_type, routing_key=q_data['queue']))
+        return q_data
 
     def switch_proj(self, msg, warning_task=None, logger=None):
         task_meta = self.current_worker_task.request.delivery_info
@@ -135,17 +137,17 @@ class CeleryClient(Celery):
         raise SystemError('Wrong tasks consumer.')
 
     def rest_task_default(self, q_name='default', exchange=None, routing_key=None, proj_name=None):
-        proj_name = f"!{proj_name or self.prefix}"
-        self.conf.task_default_queue = f"{proj_name}.{q_name}"
+        proj_name = f"{proj_name or self.prefix}"
+        self.conf.task_default_queue = f"*{proj_name}.{q_name}"
         self.conf.task_default_exchange = f"{proj_name}.{exchange or q_name}"
         self.conf.task_default_routing_key = f"{proj_name}.{routing_key or q_name}"
 
-    def __init_q(self, item):
-        if item['exchange'][0] == 'default':
-            item["exchange"] = Exchange(self.conf.task_default_exchange, type=item.pop('exchange_type'))
+    def __init_q(self, **kwargs):
+        if kwargs['exchange'] == 'default':
+            kwargs["exchange"] = Exchange(self.conf.task_default_exchange, type=kwargs.pop('exchange_type'))
         else:
-            item["exchange"] = Exchange(item['exchange'], type=item.pop('exchange_type'))
-        return Queue(**item)
+            kwargs["exchange"] = Exchange(kwargs['exchange'], type=kwargs.pop('exchange_type'))
+        return Queue(**kwargs)
 
     def __split_queue(self, q_type, q_list: str = None):
         return (self.__snum(q_type, q_list) if q_list.count(':') == 1 else
