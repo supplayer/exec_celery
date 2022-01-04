@@ -104,8 +104,10 @@ class CeleryClient(Celery):
         self.conf.update(worker_prefetch_multiplier=prefetch)
         celery_args = list(celery_args)
         self.argv.append(f'-n~{self.prefix}.{queue_type}_{"%02d" % hostnum}_{queue_list or "all"}@%d')
-        if '-Q' not in celery_args:
+        if '-Q' not in celery_args and '-B' not in celery_args and '--beat' not in celery_args:
             self.argv.append('-Q'+','.join(self.choose_queues(queue_type, queue_list, queue_all)))
+        if '-B' in celery_args or '--beat' in celery_args:
+            self.argv.append('-Qcelery')
         argv = self.argv + (celery_args[:-1] if ('pro' in celery_args or 'dev' in celery_args) else celery_args)
         self.worker_main(argv)
 
