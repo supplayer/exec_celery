@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Optional
 
 
 class TaskMsgSender:
@@ -6,13 +6,13 @@ class TaskMsgSender:
         self.task_func = task_func
         self.task_args = task_args
 
-    def send_msg(self, task_func: Any = None, priority: int = None):
+    def send_msg(self, task_func, priority: int = None):
         if isinstance(self.task_args, dict):
             self.task_args = [self.task_args]
         for task_args in self.task_args:
             self.__send_msg(task_args, task_func, priority)
 
-    def __send_msg(self, task_args: dict, task_func: Any = None, priority: int = None):
+    def __send_msg(self, task_args: dict, task_func, priority: int = None):
         async_kwargs = {**task_args['async_kwargs'], **(dict(priority=priority) if priority else {})}
         (task_func or self.task_func).apply_async(tuple(task_args['args']), **async_kwargs)
 
