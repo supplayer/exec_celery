@@ -1,4 +1,5 @@
 from celery import Celery
+from functools import partial
 from kombu import Queue, Exchange
 from json import loads
 import os
@@ -108,9 +109,11 @@ class CeleryClient(Celery):
         if '-Q' not in celery_args and '-B' not in celery_args and '--beat' not in celery_args:
             self.argv.append('-Q'+','.join(self.choose_queues(queue_type, queue_list, queue_all)))
         if '-B' in celery_args or '--beat' in celery_args:
-            self.argv.append(f'-Q{proj_name}.beat_schedule')
-        argv = self.argv + (celery_args[:-1] if ('pro' in celery_args or 'dev' in celery_args) else celery_args)
-        self.worker_main(argv)
+            beat = partial(self.Beat, logfile=None, pidfile=None)
+            beat().run()
+        else:
+            argv = self.argv + (celery_args[:-1] if ('pro' in celery_args or 'dev' in celery_args) else celery_args)
+            self.worker_main(argv)
 
     def choose_queues(self, q_type, q_list: str = None, q_all=False):
         return [j for i in self.model_queues.values() for j in i] if q_all else self.__split_queue(q_type, q_list)
