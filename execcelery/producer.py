@@ -10,7 +10,7 @@ class TaskMsgSender:
         if isinstance(self.__task_args, dict):
             self.__task_args = [self.__task_args]
         for task_args in self.__task_args:
-            self.__send_msg(task_args, task_func, priority)
+            self.__send_msg(task_args, task_func, priority, **async_kwargs)
 
     def __send_msg(self, task_args: dict, task_func, priority: int = None, **async_kwargs):
         async_kwargs = {**task_args['async_kwargs'], **(dict(priority=priority) if priority else {}), **async_kwargs}
