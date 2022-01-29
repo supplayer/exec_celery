@@ -6,14 +6,14 @@ class TaskMsgSender:
         self.__task_func = task_func
         self.__task_args = task_args
 
-    def send_msg(self, task_func=None, priority: int = None):
+    def send_msg(self, task_func=None, priority: int = None, **async_kwargs):
         if isinstance(self.__task_args, dict):
             self.__task_args = [self.__task_args]
         for task_args in self.__task_args:
             self.__send_msg(task_args, task_func, priority)
 
-    def __send_msg(self, task_args: dict, task_func, priority: int = None):
-        async_kwargs = {**task_args['async_kwargs'], **(dict(priority=priority) if priority else {})}
+    def __send_msg(self, task_args: dict, task_func, priority: int = None, **async_kwargs):
+        async_kwargs = {**task_args['async_kwargs'], **(dict(priority=priority) if priority else {}), **async_kwargs}
         (task_func or self.__task_func).apply_async(tuple(task_args['args']), **async_kwargs)
 
 
