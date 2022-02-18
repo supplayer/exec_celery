@@ -131,15 +131,12 @@ class CeleryClient(Celery):
                                                 exchange_type=exchange_type, routing_key=q_data['queue']))
         return q_data
 
-    def switch_proj(self, msg, warning_task=None, logger=None):
+    def switch_proj(self, msg, warning_task=None, logger=print):
         task_meta = self.current_worker_task.request.delivery_info
         w_msg = f"Wrong tasks consumer: {msg}, details: {task_meta}"
         if warning_task:
             warning_task.delay(w_msg)
-        if logger:
-            logger.msg(w_msg)
-        else:
-            print(w_msg)
+        logger(w_msg)
         raise SystemError('Wrong tasks consumer.')
 
     def rest_task_default(self, q_name='default', exchange=None, routing_key=None, proj_name=None):
